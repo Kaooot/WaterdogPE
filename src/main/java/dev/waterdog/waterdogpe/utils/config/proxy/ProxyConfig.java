@@ -33,7 +33,8 @@ import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.*;
 
-@Getter @Setter
+@Getter
+@Setter
 @SerializeOptions(skipFailedObjects = true)
 public class ProxyConfig extends YamlConfig {
 
@@ -83,14 +84,11 @@ public class ProxyConfig extends YamlConfig {
 
     @Path("permissions")
     @Comment("Case-Sensitive permission list for players (empty using {})")
-    private Object2ObjectOpenHashMap<String, List<String>> playerPermissions = new Object2ObjectOpenHashMap<>() {{
-        this.put("alemiz003", Arrays.asList("waterdog.player.transfer", "waterdog.player.list"));
-        this.put("TobiasDev", Arrays.asList("waterdog.player.transfer", "waterdog.player.list"));
-    }};
+    private Object2ObjectOpenHashMap<String, List<String>> playerPermissions = new Object2ObjectOpenHashMap<>();
 
     @Path("permissions_default")
     @Comment("List of permissions each player should get by default (empty using [])")
-    private List<String> defaultPermissions = new ArrayList<>(Arrays.asList("waterdog.command.help", "waterdog.command.info"));
+    private List<String> defaultPermissions = new ArrayList<>();
 
     @Path("enable_debug")
     @Comment("Whether the debug output in the console should be enabled or not")
@@ -128,7 +126,7 @@ public class ProxyConfig extends YamlConfig {
     @Path("enable_query")
     @Accessors(fluent = true)
     @Comment("Whether server query should be enabled")
-    private boolean enableQuery = true;
+    private boolean enableQuery = false;
 
     @Path("prefer_fast_transfer")
     @Accessors(fluent = true)
@@ -158,7 +156,7 @@ public class ProxyConfig extends YamlConfig {
     @Path("enable_edu_features")
     @Accessors(fluent = true)
     @Comment("Education features require small adjustments to work correctly. Enable this option if any of downstream servers support education features.")
-    private boolean enableEducationFeatures = true;
+    private boolean enableEducationFeatures = false;
 
     @Path("enable_packs")
     @Accessors(fluent = true)
@@ -199,11 +197,11 @@ public class ProxyConfig extends YamlConfig {
 
     @Path("enable_statistics")
     @Comment("Enable anonymous statistics that are sent to bstats. For more information, check out our bstats page at https://bstats.org/plugin/server-implementation/WaterdogPE/15678")
-    private boolean enableAnonymousStatistics = true;
+    private boolean enableAnonymousStatistics = false;
 
     @Path("enable_error_reporting")
     @Comment("Enables anonymous error reporting using bugsnag. This allows the WaterdogPE team to automatically collect issues occurring on WaterdogPE instances.")
-    private boolean enableAnonymousErrorReporting = true;
+    private boolean enableAnonymousErrorReporting = false;
 
     public ProxyConfig(File file) {
         this.CONFIG_HEADER = new String[]{"Waterdog Main Configuration file", "Configure your desired network settings here."};
