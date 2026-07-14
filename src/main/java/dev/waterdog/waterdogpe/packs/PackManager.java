@@ -400,15 +400,15 @@ public class PackManager {
             if (pack.getType().equals(ResourcePack.TYPE_RESOURCES)) {
                 infoPacket.getResourcePacks().add(infoEntry);
                 stackPacket.getTexturePackList().add(stackEntry);
-            }/* else if (pack.getType().equals(ResourcePack.TYPE_DATA)) {
+            } else if (pack.getType().equals(ResourcePack.TYPE_DATA)) {
                 infoPacket.getBehaviorPacks().add(infoEntry);
-                stackPacket.getBehaviorPacks().add(stackEntry);
-            }*/
+                stackPacket.getAddonList().add(stackEntry);
+            }
         }
 
-       /* if (this.proxy.getConfiguration().enableEducationFeatures()) {
-            stackPacket.getBehaviorPacks().add(EDU_PACK);
-        }*/
+        if (this.proxy.getConfiguration().enableEducationFeatures()) {
+            stackPacket.getAddonList().add(EDU_PACK);
+        }
         ResourcePacksRebuildEvent event = new ResourcePacksRebuildEvent(infoPacket, stackPacket);
         this.proxy.getEventManager().callEvent(event);
 
