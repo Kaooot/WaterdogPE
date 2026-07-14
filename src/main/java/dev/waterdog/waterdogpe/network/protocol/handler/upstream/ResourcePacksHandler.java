@@ -51,12 +51,12 @@ public class ResourcePacksHandler extends AbstractUpstreamHandler {
     public PacketSignal handle(ResourcePackClientResponsePacket packet) {
         PackManager packManager = this.player.getProxy().getPackManager();
 
-        switch (packet.getStatus()) {
-            case REFUSED:
+        switch (packet.getResponse()) {
+            case CANCEL:
                 this.player.disconnect("disconnectionScreen.noReason");
                 break;
-            case SEND_PACKS:
-                for (String packIdVer : packet.getPackIds()) {
+            case DOWNLOADING:
+                for (String packIdVer : packet.getDownloadingPacks()) {
                     ResourcePackDataInfoPacket response = packManager.packInfoFromIdVer(packIdVer);
                     if (response == null) {
                         this.player.disconnect("disconnectionScreen.resourcePack");
@@ -66,12 +66,12 @@ public class ResourcePacksHandler extends AbstractUpstreamHandler {
                 }
                 this.sendNextPacket();
                 break;
-            case HAVE_ALL_PACKS:
+            case DOWNLOADING_FINISHED:
                 PlayerResourcePackApplyEvent event = new PlayerResourcePackApplyEvent(this.player, packManager.getStackPacket());
                 this.player.getProxy().getEventManager().callEvent(event);
                 this.player.getConnection().sendPacket(event.getStackPacket());
                 break;
-            case COMPLETED:
+            case RESOURCE_PACK_STACK_FINISHED:
                 this.stopSending();
                 if (!this.player.hasUpstreamBridge()) {
                     this.player.initialConnect(); // First connection
@@ -115,8 +115,8 @@ public class ResourcePacksHandler extends AbstractUpstreamHandler {
         }
 
         this.player.sendPacket(response);
-        this.sentChunks.add(response.getChunkIndex());
-        if (this.sendingPack != null && this.sentChunks.size() >= this.sendingPack.getChunkCount()) {
+        this.sentChunks.add(response.getChunkID());
+        if (this.sendingPack != null && this.sentChunks.size() >= this.sendingPack.getNumberOfChunks()) {
             this.sendNextPacket();
         }
     }

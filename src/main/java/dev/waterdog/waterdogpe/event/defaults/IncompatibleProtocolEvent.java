@@ -18,11 +18,11 @@ package dev.waterdog.waterdogpe.event.defaults;
 import dev.waterdog.waterdogpe.player.ProxiedPlayer;
 import lombok.Getter;
 import lombok.Setter;
-import org.cloudburstmc.protocol.bedrock.packet.PlayStatusPacket;
+import org.cloudburstmc.protocol.bedrock.data.PlayStatus;
 
 /**
  * This event is called when a player with an incompatible version is attempting to connect.
- * {@link IncompatibleProtocolEvent#status} can be set to {@link PlayStatusPacket.Status#LOGIN_SUCCESS}
+ * {@link IncompatibleProtocolEvent#status} can be set to {@link PlayStatus#LOGIN_SUCCESS}
  * and {@link IncompatibleProtocolEvent#disconnectMessage} can be modified to show a custom message instead of client's
  * default incompatible version message. Which is sometimes confusing to players.
  * <p>
@@ -34,12 +34,12 @@ public class IncompatibleProtocolEvent extends PlayerEvent {
     private final int protocolVersion;
     @Getter
     @Setter
-    private PlayStatusPacket.Status status;
+    private PlayStatus status;
     @Getter
     @Setter
     private CharSequence disconnectMessage;
 
-    public IncompatibleProtocolEvent(ProxiedPlayer player, int protocolVersion, PlayStatusPacket.Status status, CharSequence disconnectMessage) {
+    public IncompatibleProtocolEvent(ProxiedPlayer player, int protocolVersion, PlayStatus status, CharSequence disconnectMessage) {
         super(player);
         this.protocolVersion = protocolVersion;
         this.status = status;

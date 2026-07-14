@@ -17,30 +17,28 @@ package dev.waterdog.waterdogpe.network.protocol.user;
 
 import dev.waterdog.waterdogpe.network.connection.ProxiedConnection;
 import dev.waterdog.waterdogpe.network.connection.codec.batch.BatchFlags;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import org.cloudburstmc.math.vector.Vector2f;
-import org.cloudburstmc.math.vector.Vector3f;
-import org.cloudburstmc.math.vector.Vector3i;
-import org.cloudburstmc.protocol.bedrock.data.*;
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityFlag;
-import org.cloudburstmc.protocol.bedrock.data.entity.EntityLinkData;
-import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
-import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
-import org.cloudburstmc.protocol.bedrock.packet.*;
 import dev.waterdog.waterdogpe.network.protocol.ProtocolVersion;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.cloudburstmc.math.vector.Vector2f;
+import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.cloudburstmc.protocol.bedrock.data.*;
+import org.cloudburstmc.protocol.bedrock.data.actor.ActorDataMap;
+import org.cloudburstmc.protocol.bedrock.data.actor.ActorDataTypes;
+import org.cloudburstmc.protocol.bedrock.data.actor.ActorFlags;
+import org.cloudburstmc.protocol.bedrock.data.actor.ActorLink;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
+import org.cloudburstmc.protocol.bedrock.data.payload.boss.BossEventUpdateType;
+import org.cloudburstmc.protocol.bedrock.data.payload.common.DimensionType;
+import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
+import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.VarInts;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Collection of functions to remove various client-sided data sets when switching servers.
@@ -68,7 +66,7 @@ public class PlayerRewriteUtils {
     private static final ByteBuf emptyChunkRaw;
 
     static {
-        defaultChunkRadius.setRadius(8);
+        defaultChunkRadius.setChunkRadius(8);
         // Here we create hardcoded "empty" chunk which is accepted by client
         // Because client does not accept empty array list we try to hardcode this
         // Keep in mind that this CAN change with newer versions!
@@ -129,8 +127,8 @@ public class PlayerRewriteUtils {
             return;
         }
         NetworkChunkPublisherUpdatePacket packet = new NetworkChunkPublisherUpdatePacket();
-        packet.setPosition(center);
-        packet.setRadius(chunkRadius << 4); // radius is in blocks, not chunks
+        packet.setNewPositionForView(center);
+        packet.setNewRadiusForView(chunkRadius << 4); // radius is in blocks, not chunks
         session.sendPacketImmediately(packet);
     }
 
@@ -139,7 +137,7 @@ public class PlayerRewriteUtils {
             return;
         }
         SetPlayerGameTypePacket packet = new SetPlayerGameTypePacket();
-        packet.setGamemode(gameMode.ordinal());
+        packet.setPlayerGameType(gameMode);
         session.sendPacket(packet);
     }
 
@@ -148,7 +146,7 @@ public class PlayerRewriteUtils {
             return;
         }
         GameRulesChangedPacket packet = new GameRulesChangedPacket();
-        packet.getGameRules().addAll(gameRules);
+        packet.getRulesData().getRulesList().addAll(gameRules);
         session.sendPacket(packet);
     }
 
@@ -169,12 +167,12 @@ public class PlayerRewriteUtils {
         session.sendPacket(stopRain);
     }
 
-    public static void injectSetDifficulty(ProxiedConnection session, int difficulty) {
+    public static void injectSetDifficulty(ProxiedConnection session, Difficulty difficulty) {
         if (session == null || !session.isConnected()) {
             return;
         }
         SetDifficultyPacket packet = new SetDifficultyPacket();
-        packet.setDifficulty(difficulty);
+        packet.setDifficulty(difficulty.ordinal());
         session.sendPacket(packet);
     }
 
@@ -191,8 +189,8 @@ public class PlayerRewriteUtils {
         if (session == null || !session.isConnected()) {
             return;
         }
-        SetEntityLinkPacket packet = new SetEntityLinkPacket();
-        packet.setEntityLink(new EntityLinkData(vehicleId, riderId, EntityLinkData.Type.REMOVE, false, false));
+        SetActorLinkPacket packet = new SetActorLinkPacket();
+        packet.setLink(new ActorLink(vehicleId, riderId, ActorLinkType.NONE, false, false));
         session.sendPacket(packet);
     }
 
@@ -200,8 +198,8 @@ public class PlayerRewriteUtils {
         if (session == null || !session.isConnected()) {
             return;
         }
-        RemoveEntityPacket packet = new RemoveEntityPacket();
-        packet.setUniqueEntityId(runtimeId);
+        RemoveActorPacket packet = new RemoveActorPacket();
+        packet.setTargetActorID(runtimeId);
         session.sendPacket(packet);
     }
 
@@ -210,8 +208,8 @@ public class PlayerRewriteUtils {
             return;
         }
         RemoveVolumeEntityPacket packet = new RemoveVolumeEntityPacket();
-        packet.setId(id);
-        packet.setDimension(dimension);
+        packet.setEntityNetworkId(id);
+        packet.setDimensionType(DimensionType.from(dimension));
         session.sendPacket(packet);
     }
 
@@ -222,13 +220,13 @@ public class PlayerRewriteUtils {
         session.sendPacket(new PlayerFogPacket()); // empty fog stack clears all fog
     }
 
-    public static void injectInputLocks(ProxiedConnection session, int lockData, Vector3f position) {
+    public static void injectInputLocks(ProxiedConnection session, Set<ClientInputLockComponent> lockData, Vector3f position) {
         if (session == null || !session.isConnected()) {
             return;
         }
         UpdateClientInputLocksPacket packet = new UpdateClientInputLocksPacket();
-        packet.setLockComponentData(lockData); // 0 unlocks; position only anchors a movement lock
-        packet.setServerPosition(position);
+        packet.getInputLockComponents().addAll(lockData);
+        packet.setServerPos(position);
         session.sendPacket(packet);
     }
 
@@ -237,8 +235,8 @@ public class PlayerRewriteUtils {
             return;
         }
         SetHudPacket packet = new SetHudPacket();
-        packet.getElements().addAll(elements);
-        packet.setVisibility(HudVisibility.RESET);
+        packet.getHudElementList().addAll(elements);
+        packet.setHudVisible(HudVisibility.RESET);
         session.sendPacket(packet);
     }
 
@@ -247,9 +245,9 @@ public class PlayerRewriteUtils {
             return;
         }
         ContainerClosePacket packet = new ContainerClosePacket();
-        packet.setId(id);
-        packet.setType(type);
-        packet.setServerInitiated(true);
+        packet.setContainerID(id);
+        packet.setContainerType(type);
+        packet.setServerInitiatedClose(true);
         session.sendPacket(packet);
     }
 
@@ -258,7 +256,7 @@ public class PlayerRewriteUtils {
             return;
         }
         PlayerListPacket packet = new PlayerListPacket();
-        packet.setAction(PlayerListPacket.Action.REMOVE);
+        packet.setAction(PlayerListPacketType.REMOVE);
         List<PlayerListPacket.Entry> entries = new ArrayList<>();
         for (UUID uuid : playerList) {
             entries.add(new PlayerListPacket.Entry(uuid));
@@ -276,28 +274,28 @@ public class PlayerRewriteUtils {
         for (int i = 0; i < effectsCount; i++) {
             injectRemoveEntityEffect(session, runtimeId, i);
         }
-        SetEntityDataPacket packet = new SetEntityDataPacket();
-        packet.getMetadata().putType(EntityDataTypes.AUX_VALUE_DATA, (short) 0);
-        packet.getMetadata().putType(EntityDataTypes.EFFECT_COLOR, 0);
-        packet.getMetadata().putType(EntityDataTypes.EFFECT_AMBIENCE, (byte) 0);
-        packet.setRuntimeEntityId(runtimeId);
+        SetActorDataPacket packet = new SetActorDataPacket();
+        packet.getActorData().putType(ActorDataTypes.AUX_VALUE_DATA, (short) 0);
+        packet.getActorData().putType(ActorDataTypes.EFFECT_COLOR, 0);
+        packet.getActorData().putType(ActorDataTypes.EFFECT_AMBIENCE, (byte) 0);
+        packet.setTargetRuntimeID(runtimeId);
         session.sendPacket(packet);
     }
 
     public static void injectRemoveEntityEffect(ProxiedConnection session, long runtimeId, int effect) {
         MobEffectPacket packet = new MobEffectPacket();
-        packet.setRuntimeEntityId(runtimeId);
-        packet.setEffectId(effect);
+        packet.setTargetRuntimeID(runtimeId);
+        packet.setEffectID(effect);
         packet.setEvent(MobEffectPacket.Event.REMOVE);
         session.sendPacket(packet);
     }
 
-    public static void injectRemoveObjective(ProxiedConnection session, String objectiveId) {
+    public static void injectRemoveObjective(ProxiedConnection session, String objectiveName) {
         if (session == null || !session.isConnected()) {
             return;
         }
         RemoveObjectivePacket packet = new RemoveObjectivePacket();
-        packet.setObjectiveId(objectiveId);
+        packet.setObjectiveName(objectiveName);
         session.sendPacket(packet);
     }
 
@@ -306,8 +304,8 @@ public class PlayerRewriteUtils {
             return;
         }
         SetScorePacket packet = new SetScorePacket();
-        packet.setAction(SetScorePacket.Action.REMOVE);
-        packet.getInfos().addAll(scoreInfos.values());
+        packet.setScorePacketType(ScorePacketType.REMOVE);
+        packet.getScoreInfo().addAll(scoreInfos.values());
         session.sendPacket(packet);
     }
 
@@ -316,8 +314,8 @@ public class PlayerRewriteUtils {
             return;
         }
         BossEventPacket packet = new BossEventPacket();
-        packet.setAction(BossEventPacket.Action.REMOVE);
-        packet.setBossUniqueEntityId(bossbarId);
+        packet.setTargetActorID(bossbarId);
+        packet.setEventType(BossEventUpdateType.REMOVE);
         session.sendPacket(packet);
     }
 
@@ -327,9 +325,9 @@ public class PlayerRewriteUtils {
         }
         MovePlayerPacket packet = new MovePlayerPacket();
         packet.setPosition(position);
-        packet.setRuntimeEntityId(runtimeId);
+        packet.setPlayerRuntimeID(runtimeId);
         packet.setRotation(rotation.toVector3(rotation.getY()));
-        packet.setMode(MovePlayerPacket.Mode.RESPAWN);
+        packet.setPositionMode(MovePlayerPacket.PositionMode.RESPAWN);
         session.sendPacketImmediately(packet);
     }
 
@@ -339,8 +337,8 @@ public class PlayerRewriteUtils {
         }
         ChangeDimensionPacket packet = new ChangeDimensionPacket();
         packet.setPosition(position);
-        packet.setRespawn(true);
-        packet.setDimension(dimensionId);
+        packet.setRespawn(false);
+        packet.setDimension(DimensionType.from(dimensionId));
         session.sendPacketImmediately(packet);
 
         if (chunks) {
@@ -352,10 +350,10 @@ public class PlayerRewriteUtils {
             // The game does for some unknown reason expect client dim change ACK
             // to be sent from server in order to fully finish the transfer
             PlayerActionPacket actionPacket = new PlayerActionPacket();
-            actionPacket.setRuntimeEntityId(runtimeId);
-            actionPacket.setAction(PlayerActionType.DIMENSION_CHANGE_SUCCESS);
+            actionPacket.setPlayerRuntimeID(runtimeId);
+            actionPacket.setAction(PlayerActionType.CHANGE_DIMENSION_ACK);
             actionPacket.setBlockPosition(Vector3i.ZERO);
-            actionPacket.setResultPosition(Vector3i.ZERO);
+            actionPacket.setResultPos(Vector3i.ZERO);
             actionPacket.setFace(0);
             session.sendPacketImmediately(actionPacket);
         }
@@ -381,29 +379,29 @@ public class PlayerRewriteUtils {
         LevelChunkPacket packet = new LevelChunkPacket();
         packet.setChunkX(chunkX);
         packet.setChunkZ(chunkZ);
-        packet.setCachingEnabled(false);
-        packet.setDimension(dimension);
+        packet.setCacheEnabled(false);
+        packet.setDimension(DimensionType.from(dimension));
         // Request mode is only serializable since 1.18.30 (v486 codec); older codecs ignore the flag
         if (requestSubChunks && version.isAfterOrEqual(ProtocolVersion.MINECRAFT_PE_1_18_30)) {
-            packet.setRequestSubChunks(true);
-            packet.setSubChunkLimit(switch (dimension) {
+            packet.setClientNeedsToRequestSubChunks(true);
+            packet.setClientRequestSubChunkLimit(switch (dimension) {
                 case DIMENSION_NETHER -> 7;
                 case DIMENSION_END -> 15;
                 default -> 23;
             });
-            packet.setData(Unpooled.EMPTY_BUFFER);
+            packet.setSerializedChunkData(Unpooled.EMPTY_BUFFER);
         } else if (version.isAfterOrEqual(ProtocolVersion.MINECRAFT_PE_1_18_30)) {
-            packet.setSubChunksLength(1);
+            packet.setSubChunksCount(1);
             switch (dimension) {
-                case DIMENSION_NETHER -> packet.setData(fakeChunkDataNether.retainedSlice());
-                case DIMENSION_END -> packet.setData(fakeChunkDataEnd.retainedSlice());
-                default -> packet.setData(fakeChunkDataOverworld.retainedSlice());
+                case DIMENSION_NETHER -> packet.setSerializedChunkData(fakeChunkDataNether.retainedSlice());
+                case DIMENSION_END -> packet.setSerializedChunkData(fakeChunkDataEnd.retainedSlice());
+                default -> packet.setSerializedChunkData(fakeChunkDataOverworld.retainedSlice());
             }
         } else if (version.isAfterOrEqual(ProtocolVersion.MINECRAFT_PE_1_18_0)) {
-            packet.setSubChunksLength(1);
-            packet.setData(fakeChunkDataBlameMojang.retainedSlice());
+            packet.setSubChunksCount(1);
+            packet.setSerializedChunkData(fakeChunkDataBlameMojang.retainedSlice());
         } else {
-            packet.setData(Unpooled.wrappedBuffer(new byte[257]));
+            packet.setSerializedChunkData(Unpooled.wrappedBuffer(new byte[257]));
         }
         return packet;
     }
@@ -415,7 +413,7 @@ public class PlayerRewriteUtils {
 
         ClientCacheMissResponsePacket packet = new ClientCacheMissResponsePacket();
         for (long blob : blobs) {
-            packet.getBlobs().put(blob, emptyChunkRaw);
+            packet.getMissingBlobs().put(blob, emptyChunkRaw);
         }
         session.sendPacket(packet);
     }
@@ -431,22 +429,22 @@ public class PlayerRewriteUtils {
         }
 
         SubChunkPacket packet = new SubChunkPacket();
-        packet.setDimension(request.getDimension());
+        packet.setDimensionType(request.getDimensionType());
         packet.setCacheEnabled(false);
-        packet.setCenterPosition(request.getSubChunkPosition());
+        packet.setCenterPos(request.getCenterPos());
 
-        List<Vector3i> offsets = request.getPositionOffsets();
+        List<Vector3i> offsets = request.getSubChunkPosOffsetList();
         if (offsets.isEmpty()) {
             offsets = List.of(Vector3i.ZERO); // pre-v485 clients request a single sub-chunk with no offsets
         }
         for (Vector3i offset : offsets) {
             SubChunkData data = new SubChunkData();
             data.setPosition(offset);
-            data.setResult(SubChunkRequestResult.SUCCESS_ALL_AIR);
+            data.setSubChunkRequestResult(SubChunkRequestResult.SUCCESS_ALL_AIR);
             data.setData(Unpooled.EMPTY_BUFFER);
-            data.setHeightMapType(HeightMapDataType.NO_DATA);
-            data.setRenderHeightMapType(HeightMapDataType.NO_DATA); // serialized since v818
-            packet.getSubChunks().add(data);
+            data.setHeightMapDataType(HeightMapDataType.NO_DATA);
+            data.setRenderHeightMapDataType(HeightMapDataType.NO_DATA); // serialized since v818
+            packet.getSubChunkDataList().add(data);
         }
         session.sendPacketImmediately(packet);
     }
@@ -456,12 +454,12 @@ public class PlayerRewriteUtils {
             return;
         }
 
-        SetEntityDataPacket packet = new SetEntityDataPacket();
-        packet.setRuntimeEntityId(runtimeId);
-        packet.getMetadata().setFlag(EntityFlag.NO_AI, immobile);
-        packet.getMetadata().setFlag(EntityFlag.BREATHING, true); // Hide bubbles
-        packet.getMetadata().setFlag(EntityFlag.HAS_GRAVITY, true); // Disable floating
-        packet.getMetadata().setFlag(EntityFlag.SLEEPING, false); // Wake from the forced inventory close, see injectForceCloseInventory
+        SetActorDataPacket packet = new SetActorDataPacket();
+        packet.setTargetRuntimeID(runtimeId);
+        packet.getActorData().setFlag(ActorFlags.NO_AI, immobile);
+        packet.getActorData().setFlag(ActorFlags.BREATHING, true); // Hide bubbles
+        packet.getActorData().setFlag(ActorFlags.HAS_GRAVITY, true); // Disable floating
+        packet.getActorData().setFlag(ActorFlags.SLEEPING, false); // Wake from the forced inventory close, see injectForceCloseInventory
         session.sendPacketImmediately(packet);
     }
 
@@ -471,13 +469,13 @@ public class PlayerRewriteUtils {
         }
         // The client closes every open inventory, including its own window which ContainerClosePacket can not close,
         // when the SLEEPING flag is set. Cleared again by injectEntityImmobile once the transfer settles.
-        SetEntityDataPacket packet = new SetEntityDataPacket();
-        packet.setRuntimeEntityId(runtimeId);
-        packet.getMetadata().setFlag(EntityFlag.SLEEPING, true);
+        SetActorDataPacket packet = new SetActorDataPacket();
+        packet.setTargetRuntimeID(runtimeId);
+        packet.getActorData().setFlag(ActorFlags.SLEEPING, true);
         session.sendPacketImmediately(packet);
     }
 
-    public static boolean checkForImmobileFlag(EntityDataMap dataMap) {
-        return dataMap != null && dataMap.getFlags() != null && Boolean.TRUE.equals(dataMap.getFlags().get(EntityFlag.NO_AI));
+    public static boolean checkForImmobileFlag(ActorDataMap dataMap) {
+        return dataMap != null && dataMap.getFlags() != null && dataMap.getFlags().contains(ActorFlags.NO_AI);
     }
 }

@@ -40,6 +40,7 @@ public class WaterdogPE {
         Thread.currentThread().setName("WaterdogPE-main");
         System.out.println("Starting WaterdogPE....");
         System.setProperty("log4j.skipJansi", "false");
+        System.setProperty("bedrock.maxDecompressedBytes", String.valueOf(100 * 1024 * 1024));
 
         MainLogger logger = MainLogger.getLogger();
         logger.info("§bStarting WaterDogPE proxy software!");

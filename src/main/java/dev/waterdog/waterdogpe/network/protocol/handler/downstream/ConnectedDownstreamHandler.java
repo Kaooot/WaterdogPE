@@ -56,7 +56,7 @@ public class ConnectedDownstreamHandler extends AbstractDownstreamHandler {
     public PacketSignal handle(LevelChunkPacket packet) {
         // Remember whether this server serves chunks via the sub-chunk request system so injected
         // empty chunks match it and the client keeps requesting sub-chunks instead of breaking.
-        this.player.setSubChunkRequestMode(packet.isRequestSubChunks());
+        this.player.setSubChunkRequestMode(packet.isClientNeedsToRequestSubChunks());
         return PacketSignal.UNHANDLED;
     }
 
@@ -66,12 +66,12 @@ public class ConnectedDownstreamHandler extends AbstractDownstreamHandler {
             return PacketSignal.UNHANDLED;
         }
 
-        ServerInfo serverInfo = this.player.getProxy().getServerInfo(packet.getAddress());
+        ServerInfo serverInfo = this.player.getProxy().getServerInfo(packet.getServerAddress());
         if (serverInfo == null) {
-            serverInfo = this.player.getProxy().getServerInfo(packet.getAddress(), packet.getPort());
+            serverInfo = this.player.getProxy().getServerInfo(packet.getServerAddress(), packet.getServerPort());
         }
 
-        FastTransferRequestEvent event = new FastTransferRequestEvent(serverInfo, this.player, packet.getAddress(), packet.getPort());
+        FastTransferRequestEvent event = new FastTransferRequestEvent(serverInfo, this.player, packet.getServerAddress(), packet.getServerPort());
         this.player.getProxy().getEventManager().callEvent(event);
 
         if (!event.isCancelled() && event.getServerInfo() != null) {
@@ -83,10 +83,10 @@ public class ConnectedDownstreamHandler extends AbstractDownstreamHandler {
 
     @Override
     public final PacketSignal handle(DisconnectPacket packet) {
-        if (this.player.sendToFallback(this.connection.getServerInfo(), ReconnectReason.SERVER_KICK, packet.getKickMessage())) {
+        if (this.player.sendToFallback(this.connection.getServerInfo(), ReconnectReason.SERVER_KICK, packet.getMessages().getMessage())) {
             return Signals.CANCEL;
         }
-        this.player.disconnect(new TranslationContainer("waterdog.downstream.kicked", packet.getKickMessage()));
+        this.player.disconnect(new TranslationContainer("waterdog.downstream.kicked", packet.getMessages().getMessage()));
         return Signals.CANCEL;
     }
 }

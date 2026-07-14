@@ -26,8 +26,11 @@ import dev.waterdog.waterdogpe.network.protocol.rewrite.types.RewriteData;
 import dev.waterdog.waterdogpe.player.ProxiedPlayer;
 import dev.waterdog.waterdogpe.utils.types.TranslationContainer;
 import org.cloudburstmc.math.vector.Vector3f;
+import org.cloudburstmc.protocol.bedrock.data.ClientInputLockComponent;
 import org.cloudburstmc.protocol.bedrock.packet.SetLocalPlayerAsInitializedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.StopSoundPacket;
+
+import java.util.Collections;
 
 import static dev.waterdog.waterdogpe.network.protocol.user.PlayerRewriteUtils.*;
 import static dev.waterdog.waterdogpe.network.protocol.handler.TransferCallback.TransferPhase.*;
@@ -80,7 +83,7 @@ public class TransferCallback {
 
         Vector3f fakePosition = rewriteData.getSpawnPosition().add(-2000, 0, -2000);
         if (this.player.getProtocol().isAfterOrEqual(ProtocolVersion.MINECRAFT_PE_1_19_50)) {
-            injectInputLocks(this.player.getConnection(), INPUT_LOCK_FREEZE, fakePosition);
+            injectInputLocks(this.player.getConnection(), Collections.singleton(ClientInputLockComponent.MOVEMENT), fakePosition);
         }
 
         if (rewriteData.getDimension() != this.targetDimension) {
@@ -108,7 +111,7 @@ public class TransferCallback {
 
         StopSoundPacket soundPacket = new StopSoundPacket();
         soundPacket.setSoundName("portal.travel");
-        soundPacket.setStoppingAllSound(true);
+        soundPacket.setStopAllSounds(true);
         this.player.sendPacketImmediately(soundPacket);
 
         injectPosition(this.player.getConnection(), rewriteData.getSpawnPosition(), rewriteData.getRotation(), rewriteData.getEntityId());
@@ -122,7 +125,7 @@ public class TransferCallback {
         this.connection.setPacketHandler(new ConnectedDownstreamHandler(player, this.connection));
 
         SetLocalPlayerAsInitializedPacket initializedPacket = new SetLocalPlayerAsInitializedPacket();
-        initializedPacket.setRuntimeEntityId(this.player.getRewriteData().getOriginalEntityId());
+        initializedPacket.setPlayerID(this.player.getRewriteData().getOriginalEntityId());
         this.connection.sendPacket(initializedPacket);
 
         TransferCompleteEvent event = new TransferCompleteEvent(this.sourceServer, this.connection, this.player);

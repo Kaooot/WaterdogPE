@@ -22,14 +22,14 @@ import dev.waterdog.waterdogpe.event.defaults.PlayerAuthenticatedEvent;
 import dev.waterdog.waterdogpe.network.connection.codec.compression.CompressionType;
 import dev.waterdog.waterdogpe.network.connection.peer.BedrockServerSession;
 import dev.waterdog.waterdogpe.network.protocol.ProtocolVersion;
-import dev.waterdog.waterdogpe.network.protocol.user.LoginData;
 import dev.waterdog.waterdogpe.network.protocol.user.HandshakeEntry;
 import dev.waterdog.waterdogpe.network.protocol.user.HandshakeUtils;
+import dev.waterdog.waterdogpe.network.protocol.user.LoginData;
 import dev.waterdog.waterdogpe.player.ProxiedPlayer;
 import dev.waterdog.waterdogpe.security.SecurityManager;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.codec.compat.BedrockCompat;
-import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
+import org.cloudburstmc.protocol.bedrock.data.PlayStatus;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 
@@ -85,15 +85,15 @@ public class LoginUpstreamHandler implements BedrockPacketHandler {
         }
         IncompatibleProtocolEvent event = new IncompatibleProtocolEvent(player, protocolVersion,
                 (protocolVersion > WaterdogPE.version().latestProtocolVersion() ?
-                        PlayStatusPacket.Status.LOGIN_FAILED_SERVER_OLD :
-                        PlayStatusPacket.Status.LOGIN_FAILED_CLIENT_OLD),
+                        PlayStatus.LOGIN_FAILED_SERVER_OLD :
+                        PlayStatus.LOGIN_FAILED_CLIENT_OLD),
                 "disconnect.disconnected"
         );
         this.proxy.getEventManager().callEvent(event);
         PlayStatusPacket status = new PlayStatusPacket();
         status.setStatus(event.getStatus());
         this.session.sendPacketImmediately(status);
-        this.session.disconnect(event.getDisconnectMessage());
+        this.session.disconnect((String) event.getDisconnectMessage());
         this.proxy.getLogger().warning("[{}] <-> Upstream has disconnected due to incompatible protocol (protocol={})", this.session.getSocketAddress(), protocolVersion);
         return null;
     }
@@ -101,7 +101,7 @@ public class LoginUpstreamHandler implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(RequestNetworkSettingsPacket packet) {
         ProtocolVersion protocol;
-        if (!this.attemptLogin() || (protocol = this.checkVersion(packet.getProtocolVersion())) == null) {
+        if (!this.attemptLogin() || (protocol = this.checkVersion(packet.getClientNetworkVersion())) == null) {
             return PacketSignal.HANDLED;
         }
 
@@ -129,7 +129,7 @@ public class LoginUpstreamHandler implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(LoginPacket packet) {
         ProtocolVersion protocol;
-        if (!this.attemptLogin() || (protocol = this.checkVersion(packet.getProtocolVersion())) == null) {
+        if (!this.attemptLogin() || (protocol = this.checkVersion(packet.getClientNetworkVersion())) == null) {
             return PacketSignal.HANDLED;
         }
 
@@ -151,8 +151,8 @@ public class LoginUpstreamHandler implements BedrockPacketHandler {
 
         this.session.setLogging(WaterdogPE.version().debug());
         try {
-            this.proxy.getLogger().debug("[{}] <-> Received login with authType: {} and payloadType: {}.", this.session.getSocketAddress(),
-                    packet.getAuthPayload().getClass().getSimpleName(), packet.getAuthPayload().getAuthType());
+            this.proxy.getLogger().debug("[{}] <-> Received login with authType: {} and type: {}.", this.session.getSocketAddress(),
+                    packet.getToken() != null ? "Token" : "CertificateChain", packet.getAuthenticationType());
 
             handshakeEntry = HandshakeUtils.processHandshake(this.session, packet, protocol, strictAuth);
             if (!handshakeEntry.isXboxAuthed() && strictAuth) {
@@ -213,7 +213,7 @@ public class LoginUpstreamHandler implements BedrockPacketHandler {
         }
 
         PlayStatusPacket status = new PlayStatusPacket();
-        status.setStatus(PlayStatusPacket.Status.LOGIN_SUCCESS);
+        status.setStatus(PlayStatus.LOGIN_SUCCESS);
         this.session.sendPacket(status);
         this.player.initPlayer();
     }

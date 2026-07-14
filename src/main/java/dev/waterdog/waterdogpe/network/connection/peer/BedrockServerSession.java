@@ -28,6 +28,7 @@ import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.BedrockSession;
 import org.cloudburstmc.protocol.bedrock.PacketDirection;
 import org.cloudburstmc.protocol.bedrock.data.DisconnectFailReason;
+import org.cloudburstmc.protocol.bedrock.data.payload.connection.DisconnectPacketMessages;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockPacketWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
@@ -78,15 +79,15 @@ public class BedrockServerSession extends BedrockSession implements ProxiedConne
     }
 
     @Override
-    public void disconnect(CharSequence reason, boolean hideReason) {
+    public void disconnect(String reason, boolean hideReason) {
         this.checkForClosed();
 
         DisconnectPacket packet = new DisconnectPacket();
         if (reason == null || hideReason) {
-            packet.setMessageSkipped(true);
+            packet.setSkipMessage(true);
             reason = BedrockDisconnectReasons.DISCONNECTED;
         }
-        packet.setKickMessage(reason);
+        packet.setMessages(new DisconnectPacketMessages(reason, ""));
         packet.setReason(DisconnectFailReason.DISCONNECTED);
         this.sendPacketImmediately(packet);
     }
@@ -130,7 +131,7 @@ public class BedrockServerSession extends BedrockSession implements ProxiedConne
         return this.packetHandler;
     }
 
-    public void addDisconnectListener(Consumer<CharSequence> listener) {
+    public void addDisconnectListener(Consumer<String> listener) {
         this.getPeer().getChannel().closeFuture().addListener(future -> listener.accept(this.getDisconnectReason()));
     }
 

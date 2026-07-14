@@ -118,7 +118,7 @@ publishing {
             from(components["java"])
         }
     }
-    repositories {
+/*    repositories {
         maven {
             name = "waterdog"
             url = uri(
@@ -127,5 +127,5 @@ publishing {
             )
             credentials(PasswordCredentials::class)
         }
-    }
+    }*/
 }

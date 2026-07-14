@@ -15,40 +15,44 @@
 
 package dev.waterdog.waterdogpe.player;
 
-import dev.waterdog.waterdogpe.network.connection.codec.compression.CompressionType;
-import dev.waterdog.waterdogpe.network.connection.handler.ReconnectReason;
-import dev.waterdog.waterdogpe.network.connection.peer.BedrockServerSession;
-import dev.waterdog.waterdogpe.network.connection.client.ClientConnection;
-import dev.waterdog.waterdogpe.network.protocol.handler.PluginPacketHandler;
-import dev.waterdog.waterdogpe.network.protocol.handler.downstream.CompressionInitHandler;
-import dev.waterdog.waterdogpe.network.protocol.user.LoginData;
-import dev.waterdog.waterdogpe.network.protocol.user.Platform;
-import dev.waterdog.waterdogpe.network.protocol.handler.downstream.InitialHandler;
-import dev.waterdog.waterdogpe.network.protocol.handler.downstream.SwitchDownstreamHandler;
-import lombok.Getter;
-import lombok.Setter;
-import org.cloudburstmc.protocol.bedrock.data.HudElement;
-import org.cloudburstmc.protocol.bedrock.data.ScoreInfo;
-import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
-import org.cloudburstmc.protocol.bedrock.data.command.CommandOriginData;
-import org.cloudburstmc.protocol.bedrock.data.command.CommandOriginType;
-import org.cloudburstmc.protocol.bedrock.packet.*;
 import dev.waterdog.waterdogpe.ProxyServer;
 import dev.waterdog.waterdogpe.command.CommandSender;
 import dev.waterdog.waterdogpe.event.defaults.*;
 import dev.waterdog.waterdogpe.logger.MainLogger;
-import dev.waterdog.waterdogpe.network.serverinfo.ServerInfo;
+import dev.waterdog.waterdogpe.network.connection.client.ClientConnection;
+import dev.waterdog.waterdogpe.network.connection.codec.compression.CompressionType;
+import dev.waterdog.waterdogpe.network.connection.handler.ReconnectReason;
+import dev.waterdog.waterdogpe.network.connection.peer.BedrockServerSession;
 import dev.waterdog.waterdogpe.network.protocol.ProtocolVersion;
+import dev.waterdog.waterdogpe.network.protocol.handler.PluginPacketHandler;
+import dev.waterdog.waterdogpe.network.protocol.handler.downstream.CompressionInitHandler;
+import dev.waterdog.waterdogpe.network.protocol.handler.downstream.InitialHandler;
+import dev.waterdog.waterdogpe.network.protocol.handler.downstream.SwitchDownstreamHandler;
+import dev.waterdog.waterdogpe.network.protocol.handler.upstream.ConnectedUpstreamHandler;
+import dev.waterdog.waterdogpe.network.protocol.handler.upstream.ResourcePacksHandler;
 import dev.waterdog.waterdogpe.network.protocol.rewrite.RewriteMaps;
 import dev.waterdog.waterdogpe.network.protocol.rewrite.types.RewriteData;
-import dev.waterdog.waterdogpe.network.protocol.handler.upstream.ResourcePacksHandler;
-import dev.waterdog.waterdogpe.network.protocol.handler.upstream.ConnectedUpstreamHandler;
+import dev.waterdog.waterdogpe.network.protocol.user.LoginData;
+import dev.waterdog.waterdogpe.network.protocol.user.Platform;
+import dev.waterdog.waterdogpe.network.serverinfo.ServerInfo;
 import dev.waterdog.waterdogpe.utils.types.Permission;
 import dev.waterdog.waterdogpe.utils.types.TextContainer;
 import dev.waterdog.waterdogpe.utils.types.TranslationContainer;
 import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.longs.*;
 import it.unimi.dsi.fastutil.objects.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.cloudburstmc.protocol.bedrock.data.ClientInputLockComponent;
+import org.cloudburstmc.protocol.bedrock.data.HudElement;
+import org.cloudburstmc.protocol.bedrock.data.ScoreInfo;
+import org.cloudburstmc.protocol.bedrock.data.TextPacketType;
+import org.cloudburstmc.protocol.bedrock.data.command.CommandOriginData;
+import org.cloudburstmc.protocol.bedrock.data.command.CommandOriginType;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
+import org.cloudburstmc.protocol.bedrock.data.payload.text.AuthorAndMessage;
+import org.cloudburstmc.protocol.bedrock.data.payload.text.MessageOnly;
+import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.Preconditions;
 
 import java.net.InetSocketAddress;
@@ -72,13 +76,13 @@ public class ProxiedPlayer implements CommandSender {
     private final AtomicBoolean disconnected = new AtomicBoolean(false);
     private final AtomicBoolean loginCalled = new AtomicBoolean(false);
     private final AtomicBoolean loginCompleted = new AtomicBoolean(false);
-    private volatile CharSequence disconnectReason;
+    private volatile String disconnectReason;
 
     /**
      * Hard cap on how long the async {@link PlayerLoginEvent} future may take to complete.
      * If a plugin handler registers a CompletableFuture that never completes (e.g. a hung
      * Redis/coroutine call), the player would otherwise be stranded forever: loginCompleted
-     * never flips, so {@link #disconnect(CharSequence)} can never evict it. The timeout
+     * never flips, so {@link #disconnect(String)} can never evict it. The timeout
      * guarantees the future always settles, which always releases the player.
      */
     private static final long LOGIN_EVENT_TIMEOUT_SECONDS = 60;
@@ -115,8 +119,8 @@ public class ProxiedPlayer implements CommandSender {
     private final Set<HudElement> hiddenHudElements = ObjectSets.synchronize(new ObjectOpenHashSet<>());
     @Getter @Setter
     private volatile boolean fogApplied;
-    @Getter @Setter
-    private volatile int inputLockData;
+    @Getter
+    private final Set<ClientInputLockComponent> inputLockData = new ObjectOpenHashSet<>();
     @Getter
     private final Int2ObjectMap<ContainerType> openContainers = Int2ObjectMaps.synchronize(new Int2ObjectOpenHashMap<>()); // id -> type
     private final Object2ObjectMap<String, Permission> permissions = new Object2ObjectOpenHashMap<>();
@@ -443,7 +447,7 @@ public class ProxiedPlayer implements CommandSender {
      *
      * @param reason The disconnect reason the player will see on his disconnect screen (Supports Color Codes)
      */
-    public void disconnect(CharSequence reason) {
+    public void disconnect(String reason) {
         if (this.loginCalled.get() && !this.loginCompleted.get()) {
             // Wait until PlayerLoginEvent completes
             this.disconnectReason = reason;
@@ -588,10 +592,13 @@ public class ProxiedPlayer implements CommandSender {
             return; // Client wont accept empty string
         }
 
+        final MessageOnly body = new MessageOnly();
+        body.setMessage(message);
+
         TextPacket packet = new TextPacket();
-        packet.setType(TextPacket.Type.RAW);
-        packet.setXuid(this.getXuid());
-        packet.setMessage(message);
+        packet.setMessageType(TextPacketType.RAW);
+        packet.setBody(body);
+        packet.setSendersXUID(this.getXuid());
         this.sendPacket(packet);
     }
 
@@ -613,17 +620,21 @@ public class ProxiedPlayer implements CommandSender {
         if (message.charAt(0) == '/') {
             CommandRequestPacket packet = new CommandRequestPacket();
             packet.setCommand(message);
-            packet.setCommandOriginData(new CommandOriginData(CommandOriginType.PLAYER, this.getUniqueId(), "", 0L));
+            packet.setCommandOrigin(new CommandOriginData(CommandOriginType.PLAYER, this.getUniqueId(), "", -1L));
             packet.setInternal(false);
             connection.sendPacket(packet);
             return;
         }
 
+        final AuthorAndMessage body = new AuthorAndMessage();
+        body.setPlayerName(this.getName());
+        body.setMessage(message);
+
         TextPacket packet = new TextPacket();
-        packet.setType(TextPacket.Type.CHAT);
-        packet.setSourceName(this.getName());
-        packet.setXuid(this.getXuid());
-        packet.setMessage(message);
+        packet.setMessageType(TextPacketType.CHAT);
+        packet.setBody(body);
+        packet.setSendersXUID(this.getXuid());
+
         connection.sendPacket(packet);
     }
 
@@ -631,13 +642,15 @@ public class ProxiedPlayer implements CommandSender {
      * Sends a popup to the player
      *
      * @param message  the popup message
-     * @param subtitle the subtitle, which will be displayed below the popup
      */
-    public void sendPopup(String message, String subtitle) {
+    public void sendPopup(String message) {
+        final MessageOnly body = new MessageOnly();
+        body.setMessage(message);
+
         TextPacket packet = new TextPacket();
-        packet.setType(TextPacket.Type.POPUP);
-        packet.setMessage(message);
-        packet.setXuid(this.getXuid());
+        packet.setMessageType(TextPacketType.POPUP);
+        packet.setBody(body);
+        packet.setSendersXUID(this.getXuid());
         this.sendPacket(packet);
     }
 
@@ -647,10 +660,13 @@ public class ProxiedPlayer implements CommandSender {
      * @param message the tip message to send
      */
     public void sendTip(String message) {
+        final MessageOnly body = new MessageOnly();
+        body.setMessage(message);
+
         TextPacket packet = new TextPacket();
-        packet.setType(TextPacket.Type.TIP);
-        packet.setMessage(message);
-        packet.setXuid(this.getXuid());
+        packet.setMessageType(TextPacketType.TIP);
+        packet.setBody(body);
+        packet.setSendersXUID(this.getXuid());
         this.sendPacket(packet);
     }
 
@@ -661,8 +677,8 @@ public class ProxiedPlayer implements CommandSender {
      */
     public void setSubtitle(String subtitle) {
         SetTitlePacket packet = new SetTitlePacket();
-        packet.setType(SetTitlePacket.Type.SUBTITLE);
-        packet.setText(subtitle);
+        packet.setTitleType(SetTitlePacket.TitleType.SUBTITLE);
+        packet.setTitleText(subtitle);
         packet.setXuid(this.getXuid());
         packet.setPlatformOnlineId("");
         this.sendPacket(packet);
@@ -677,12 +693,12 @@ public class ProxiedPlayer implements CommandSender {
      */
     public void setTitleAnimationTimes(int fadein, int duration, int fadeout) {
         SetTitlePacket packet = new SetTitlePacket();
-        packet.setType(SetTitlePacket.Type.TIMES);
+        packet.setTitleType(SetTitlePacket.TitleType.TIMES);
         packet.setFadeInTime(fadein);
         packet.setStayTime(duration);
         packet.setFadeOutTime(fadeout);
         packet.setXuid(this.getXuid());
-        packet.setText("");
+        packet.setTitleText("");
         packet.setPlatformOnlineId("");
         this.sendPacket(packet);
     }
@@ -694,8 +710,8 @@ public class ProxiedPlayer implements CommandSender {
      */
     private void setTitle(String text) {
         SetTitlePacket packet = new SetTitlePacket();
-        packet.setType(SetTitlePacket.Type.TITLE);
-        packet.setText(text);
+        packet.setTitleType(SetTitlePacket.TitleType.TITLE);
+        packet.setTitleText(text);
         packet.setXuid(this.getXuid());
         packet.setPlatformOnlineId("");
         this.sendPacket(packet);
@@ -706,8 +722,8 @@ public class ProxiedPlayer implements CommandSender {
      */
     public void clearTitle() {
         SetTitlePacket packet = new SetTitlePacket();
-        packet.setType(SetTitlePacket.Type.CLEAR);
-        packet.setText("");
+        packet.setTitleType(SetTitlePacket.TitleType.CLEAR);
+        packet.setTitleText("");
         packet.setXuid(this.getXuid());
         packet.setPlatformOnlineId("");
         this.sendPacket(packet);
@@ -718,8 +734,8 @@ public class ProxiedPlayer implements CommandSender {
      */
     public void resetTitleSettings() {
         SetTitlePacket packet = new SetTitlePacket();
-        packet.setType(SetTitlePacket.Type.RESET);
-        packet.setText("");
+        packet.setTitleType(SetTitlePacket.TitleType.RESET);
+        packet.setTitleText("");
         packet.setXuid(this.getXuid());
         packet.setPlatformOnlineId("");
         this.sendPacket(packet);
@@ -775,8 +791,8 @@ public class ProxiedPlayer implements CommandSender {
     public void redirectServer(ServerInfo serverInfo) {
         Preconditions.checkNotNull(serverInfo, "Server info can not be null!");
         TransferPacket packet = new TransferPacket();
-        packet.setAddress(serverInfo.getPublicAddress().getHostString());
-        packet.setPort(serverInfo.getPublicAddress().getPort());
+        packet.setServerAddress(serverInfo.getPublicAddress().getHostString());
+        packet.setServerPort(serverInfo.getPublicAddress().getPort());
         this.sendPacket(packet);
     }
 

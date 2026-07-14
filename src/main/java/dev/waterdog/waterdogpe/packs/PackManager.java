@@ -15,16 +15,17 @@
 
 package dev.waterdog.waterdogpe.packs;
 
-import io.netty.buffer.Unpooled;
-import lombok.Getter;
-import org.cloudburstmc.protocol.bedrock.data.ResourcePackType;
-import org.cloudburstmc.protocol.bedrock.packet.*;
 import dev.waterdog.waterdogpe.ProxyServer;
 import dev.waterdog.waterdogpe.event.defaults.ResourcePacksRebuildEvent;
 import dev.waterdog.waterdogpe.network.protocol.user.Platform;
 import dev.waterdog.waterdogpe.packs.types.ResourcePack;
 import dev.waterdog.waterdogpe.packs.types.ZipResourcePack;
 import dev.waterdog.waterdogpe.utils.FileUtils;
+import io.netty.buffer.Unpooled;
+import lombok.Getter;
+import org.cloudburstmc.protocol.bedrock.data.PackType;
+import org.cloudburstmc.protocol.bedrock.data.payload.pack.PackInstanceId;
+import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.Preconditions;
 
 import java.io.File;
@@ -38,22 +39,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class PackManager {
 
     private static final long CHUNK_SIZE = 1024 * 256;
 
     private static final PathMatcher ZIP_PACK_MATCHER = FileSystems.getDefault().getPathMatcher("glob:**.{zip,mcpack}");
-    private static final ResourcePackStackPacket.Entry EDU_PACK = new ResourcePackStackPacket.Entry("0fba4063-dba1-4281-9b89-ff9390653530", "1.0.0", "");
+    private static final PackInstanceId EDU_PACK = new PackInstanceId("0fba4063-dba1-4281-9b89-ff9390653530", "1.0.0", "");
 
     private final ProxyServer proxy;
     // Rebuilt and swapped in as a whole on (re)load so joining players read a complete, consistent set.
@@ -388,34 +381,34 @@ public class PackManager {
 
     public void rebuildPackets() {
         ResourcePacksInfoPacket infoPacket = new ResourcePacksInfoPacket();
-        infoPacket.setForcedToAccept(this.proxy.getConfiguration().isForceServerPacks());
-        infoPacket.setWorldTemplateId(UUID.randomUUID());
+        infoPacket.setResourcePackRequired(this.proxy.getConfiguration().isForceServerPacks());
+        infoPacket.setWorldTemplateUUID(UUID.randomUUID());
         infoPacket.setWorldTemplateVersion("");
 
         ResourcePackStackPacket stackPacket = new ResourcePackStackPacket();
-        stackPacket.setForcedToAccept(this.proxy.getConfiguration().isOverwriteClientPacks());
-        stackPacket.setGameVersion("");
+        stackPacket.setTexturePackRequired(this.proxy.getConfiguration().isOverwriteClientPacks());
+        stackPacket.setBaseGameVersion("");
 
         boolean hasCdnPacks = false;
         for (ResourcePack pack : this.packs.values()) {
             // The CDN URL goes straight into the packet entry; disabled platforms get a stripped copy below.
             ResourcePacksInfoPacket.Entry infoEntry = this.createInfoEntry(pack, pack.getCdnUrl());
-            ResourcePackStackPacket.Entry stackEntry = new ResourcePackStackPacket.Entry(pack.getPackId().toString(), pack.getVersion().toString(), "");
+            PackInstanceId stackEntry = new PackInstanceId(pack.getPackId().toString(), pack.getVersion().toString(), "");
             if (pack.getCdnUrl() != null) {
                 hasCdnPacks = true;
             }
             if (pack.getType().equals(ResourcePack.TYPE_RESOURCES)) {
-                infoPacket.getResourcePackInfos().add(infoEntry);
-                stackPacket.getResourcePacks().add(stackEntry);
-            } else if (pack.getType().equals(ResourcePack.TYPE_DATA)) {
-                infoPacket.getBehaviorPackInfos().add(infoEntry);
+                infoPacket.getResourcePacks().add(infoEntry);
+                stackPacket.getTexturePackList().add(stackEntry);
+            }/* else if (pack.getType().equals(ResourcePack.TYPE_DATA)) {
+                infoPacket.getBehaviorPacks().add(infoEntry);
                 stackPacket.getBehaviorPacks().add(stackEntry);
-            }
+            }*/
         }
 
-        if (this.proxy.getConfiguration().enableEducationFeatures()) {
+       /* if (this.proxy.getConfiguration().enableEducationFeatures()) {
             stackPacket.getBehaviorPacks().add(EDU_PACK);
-        }
+        }*/
         ResourcePacksRebuildEvent event = new ResourcePacksRebuildEvent(infoPacket, stackPacket);
         this.proxy.getEventManager().callEvent(event);
 
@@ -437,22 +430,22 @@ public class PackManager {
      */
     private ResourcePacksInfoPacket buildNoCdnPacket(ResourcePacksInfoPacket source) {
         ResourcePacksInfoPacket packet = new ResourcePacksInfoPacket();
-        packet.setForcedToAccept(source.isForcedToAccept());
-        packet.setWorldTemplateId(source.getWorldTemplateId());
+        packet.setResourcePackRequired(source.isResourcePackRequired());
+        packet.setWorldTemplateUUID(source.getWorldTemplateUUID());
         packet.setWorldTemplateVersion(source.getWorldTemplateVersion());
-        for (ResourcePacksInfoPacket.Entry entry : source.getResourcePackInfos()) {
-            packet.getResourcePackInfos().add(this.stripCdnUrl(entry));
+        for (ResourcePacksInfoPacket.Entry entry : source.getResourcePacks()) {
+            packet.getResourcePacks().add(this.stripCdnUrl(entry));
         }
-        for (ResourcePacksInfoPacket.Entry entry : source.getBehaviorPackInfos()) {
+        /*for (ResourcePacksInfoPacket.Entry entry : source.getBehaviorPackInfos()) {
             packet.getBehaviorPackInfos().add(this.stripCdnUrl(entry));
-        }
+        }*/
         return packet;
     }
 
     private ResourcePacksInfoPacket.Entry stripCdnUrl(ResourcePacksInfoPacket.Entry entry) {
         return new ResourcePacksInfoPacket.Entry(entry.getPackId(), entry.getPackVersion(), entry.getPackSize(),
-                entry.getContentKey(), entry.getSubPackName(), entry.getContentId(), entry.isScripting(),
-                entry.isRaytracingCapable(), entry.isAddonPack(), null);
+                entry.getContentKey(), entry.getSubPackName(), entry.getContentIdentity(), entry.isHasScripts(),
+                entry.isRayTracingCapable(), entry.isAddonPack(), null);
     }
 
     /**
@@ -476,14 +469,14 @@ public class PackManager {
         ResourcePackDataInfoPacket packet = new ResourcePackDataInfoPacket();
         packet.setPackId(resourcePack.getPackId());
         packet.setPackVersion(resourcePack.getVersion().toString());
-        packet.setMaxChunkSize(CHUNK_SIZE);
-        packet.setChunkCount((resourcePack.getPackSize() - 1) / packet.getMaxChunkSize() + 1);
-        packet.setCompressedPackSize(resourcePack.getPackSize());
-        packet.setHash(resourcePack.getHash());
+        packet.setChunkSize(CHUNK_SIZE);
+        packet.setNumberOfChunks((resourcePack.getPackSize() - 1) / packet.getChunkSize() + 1);
+        packet.setFileSize(resourcePack.getPackSize());
+        packet.setFileHash(resourcePack.getHash());
         if (resourcePack.getType().equals(ResourcePack.TYPE_RESOURCES)) {
-            packet.setType(ResourcePackType.RESOURCES);
+            packet.setPackType(PackType.RESOURCES);
         } else if (resourcePack.getType().equals(ResourcePack.TYPE_DATA)) {
-            packet.setType(ResourcePackType.ADDON);
+            packet.setPackType(PackType.ADDON);
         }
         return packet;
     }
@@ -497,9 +490,9 @@ public class PackManager {
         ResourcePackChunkDataPacket packet = new ResourcePackChunkDataPacket();
         packet.setPackId(from.getPackId());
         packet.setPackVersion(from.getPackVersion());
-        packet.setChunkIndex(from.getChunkIndex());
-        packet.setData(Unpooled.wrappedBuffer(resourcePack.getChunk((int) CHUNK_SIZE * from.getChunkIndex(), (int) CHUNK_SIZE)));
-        packet.setProgress(CHUNK_SIZE * from.getChunkIndex());
+        packet.setChunkID(from.getChunk());
+        packet.setChunkData(Unpooled.wrappedBuffer(resourcePack.getChunk((int) CHUNK_SIZE * from.getChunk(), (int) CHUNK_SIZE)));
+        packet.setByteOffset(CHUNK_SIZE * from.getChunk());
         return packet;
     }
 
