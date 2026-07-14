@@ -23,6 +23,7 @@ import lombok.extern.log4j.Log4j2;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.data.*;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
+import org.cloudburstmc.protocol.bedrock.data.payload.scoreboard.ScoreInfo;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import dev.waterdog.waterdogpe.event.defaults.ServerTransferEvent;
 import dev.waterdog.waterdogpe.network.protocol.ProtocolVersion;

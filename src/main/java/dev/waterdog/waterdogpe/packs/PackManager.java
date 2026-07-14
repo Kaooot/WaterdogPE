@@ -24,6 +24,8 @@ import dev.waterdog.waterdogpe.utils.FileUtils;
 import io.netty.buffer.Unpooled;
 import lombok.Getter;
 import org.cloudburstmc.protocol.bedrock.data.PackType;
+import org.cloudburstmc.protocol.bedrock.data.payload.pack.PackIdVersion;
+import org.cloudburstmc.protocol.bedrock.data.payload.pack.PackInfoData;
 import org.cloudburstmc.protocol.bedrock.data.payload.pack.PackInstanceId;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.Preconditions;
@@ -75,7 +77,8 @@ public class PackManager {
         for (ResourcePack pack : this.packs.values()) {
             try {
                 pack.close();
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
         }
         this.packs.clear();
         this.packsByIdVer.clear();
@@ -132,7 +135,8 @@ public class PackManager {
         for (ResourcePack pack : oldPacks.values()) {
             try {
                 pack.close();
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
         }
 
         // With the replaced packs closed, drop any cache files no longer backing a live pack (older
@@ -212,7 +216,8 @@ public class PackManager {
                 }
                 try {
                     Files.deleteIfExists(path);
-                } catch (IOException ignored) {}
+                } catch (IOException ignored) {
+                }
             }
         } catch (IOException e) {
             this.proxy.getLogger().warning("Failed to clean up CDN pack cache: " + e.getMessage());
@@ -278,7 +283,8 @@ public class PackManager {
                     newest = path;
                 }
             }
-        } catch (IOException ignored) {}
+        } catch (IOException ignored) {
+        }
         return newest;
     }
 
@@ -371,7 +377,8 @@ public class PackManager {
         }
         try {
             resourcePack.close();
-        } catch (IOException ignored) {}
+        } catch (IOException ignored) {
+        }
 
         String packIdVer = resourcePack.getPackId() + "_" + resourcePack.getVersion();
         this.packsByIdVer.remove(packIdVer);
@@ -380,10 +387,12 @@ public class PackManager {
     }
 
     public void rebuildPackets() {
+        final PackIdVersion packIdVersion = new PackIdVersion();
+        packIdVersion.setPackUUID(UUID.randomUUID());
+        packIdVersion.setPackVersion("");
         ResourcePacksInfoPacket infoPacket = new ResourcePacksInfoPacket();
         infoPacket.setResourcePackRequired(this.proxy.getConfiguration().isForceServerPacks());
-        infoPacket.setWorldTemplateUUID(UUID.randomUUID());
-        infoPacket.setWorldTemplateVersion("");
+        infoPacket.setWorldTemplateIdAndVersion(packIdVersion);
 
         ResourcePackStackPacket stackPacket = new ResourcePackStackPacket();
         stackPacket.setTexturePackRequired(this.proxy.getConfiguration().isOverwriteClientPacks());
@@ -392,16 +401,16 @@ public class PackManager {
         boolean hasCdnPacks = false;
         for (ResourcePack pack : this.packs.values()) {
             // The CDN URL goes straight into the packet entry; disabled platforms get a stripped copy below.
-            ResourcePacksInfoPacket.Entry infoEntry = this.createInfoEntry(pack, pack.getCdnUrl());
+            PackInfoData data = this.createInfoEntry(pack, pack.getCdnUrl());
             PackInstanceId stackEntry = new PackInstanceId(pack.getPackId().toString(), pack.getVersion().toString(), "");
             if (pack.getCdnUrl() != null) {
                 hasCdnPacks = true;
             }
             if (pack.getType().equals(ResourcePack.TYPE_RESOURCES)) {
-                infoPacket.getResourcePacks().add(infoEntry);
+                infoPacket.getResourcePacks().add(data);
                 stackPacket.getTexturePackList().add(stackEntry);
             } else if (pack.getType().equals(ResourcePack.TYPE_DATA)) {
-                infoPacket.getBehaviorPacks().add(infoEntry);
+//                infoPacket.getBehaviorPacks().add(data);
                 stackPacket.getAddonList().add(stackEntry);
             }
         }
@@ -419,9 +428,21 @@ public class PackManager {
         this.stackPacket = stackPacket;
     }
 
-    private ResourcePacksInfoPacket.Entry createInfoEntry(ResourcePack pack, String cdnUrl) {
-        return new ResourcePacksInfoPacket.Entry(pack.getPackId(), pack.getVersion().toString(),
-                pack.getPackSize(), pack.getContentKey(), "", pack.getContentKey().isEmpty() ? "" : pack.getPackId().toString(), false, false, false, cdnUrl);
+    private PackInfoData createInfoEntry(ResourcePack pack, String cdnUrl) {
+        final PackIdVersion packIdVersion = new PackIdVersion();
+        packIdVersion.setPackUUID(pack.getPackId());
+        packIdVersion.setPackVersion(pack.getVersion().toString());
+        final PackInfoData data = new PackInfoData();
+        data.setPackIdVersion(packIdVersion);
+        data.setPackSize(pack.getPackSize());
+        data.setContentKey(pack.getContentKey());
+        data.setSubpackName("");
+        data.setContentIdentity(pack.getContentKey().isEmpty() ? "" : pack.getPackId().toString());
+        data.setHasScripts(false);
+        data.setAddonPack(false);
+        data.setRayTracingCapable(false);
+        data.setCdnUrl(cdnUrl);
+        return data;
     }
 
     /**
@@ -431,10 +452,9 @@ public class PackManager {
     private ResourcePacksInfoPacket buildNoCdnPacket(ResourcePacksInfoPacket source) {
         ResourcePacksInfoPacket packet = new ResourcePacksInfoPacket();
         packet.setResourcePackRequired(source.isResourcePackRequired());
-        packet.setWorldTemplateUUID(source.getWorldTemplateUUID());
-        packet.setWorldTemplateVersion(source.getWorldTemplateVersion());
-        for (ResourcePacksInfoPacket.Entry entry : source.getResourcePacks()) {
-            packet.getResourcePacks().add(this.stripCdnUrl(entry));
+        packet.setWorldTemplateIdAndVersion(source.getWorldTemplateIdAndVersion());
+        for (PackInfoData data : source.getResourcePacks()) {
+            packet.getResourcePacks().add(this.stripCdnUrl(data));
         }
         /*for (ResourcePacksInfoPacket.Entry entry : source.getBehaviorPackInfos()) {
             packet.getBehaviorPackInfos().add(this.stripCdnUrl(entry));
@@ -442,10 +462,17 @@ public class PackManager {
         return packet;
     }
 
-    private ResourcePacksInfoPacket.Entry stripCdnUrl(ResourcePacksInfoPacket.Entry entry) {
-        return new ResourcePacksInfoPacket.Entry(entry.getPackId(), entry.getPackVersion(), entry.getPackSize(),
-                entry.getContentKey(), entry.getSubPackName(), entry.getContentIdentity(), entry.isHasScripts(),
-                entry.isRayTracingCapable(), entry.isAddonPack(), null);
+    private PackInfoData stripCdnUrl(PackInfoData data) {
+        final PackInfoData stripped = new PackInfoData();
+        stripped.setPackIdVersion(data.getPackIdVersion());
+        stripped.setPackSize(data.getPackSize());
+        data.setContentKey(data.getContentKey());
+        data.setSubpackName(data.getSubpackName());
+        data.setContentIdentity(data.getContentIdentity());
+        data.setHasScripts(data.isHasScripts());
+        data.setAddonPack(data.isAddonPack());
+        data.setRayTracingCapable(data.isRayTracingCapable());
+        return stripped;
     }
 
     /**

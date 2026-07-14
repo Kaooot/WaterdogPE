@@ -19,9 +19,11 @@ import dev.waterdog.waterdogpe.network.protocol.user.PlayerRewriteUtils;
 import dev.waterdog.waterdogpe.player.ProxiedPlayer;
 import org.cloudburstmc.protocol.bedrock.data.ActorLinkType;
 import org.cloudburstmc.protocol.bedrock.data.HudVisibility;
-import org.cloudburstmc.protocol.bedrock.data.PlayerListPacketType;
-import org.cloudburstmc.protocol.bedrock.data.ScoreInfo;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorLink;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListAddEntry;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListEntry;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListRemoveEntry;
+import org.cloudburstmc.protocol.bedrock.data.payload.scoreboard.*;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 
@@ -126,12 +128,12 @@ public class EntityTracker implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(PlayerListPacket packet) {
-        List<PlayerListPacket.Entry> entries = packet.getEntries();
-        for (PlayerListPacket.Entry entry : entries) {
-            if (packet.getAction() == PlayerListPacketType.ADD) {
-                this.player.getPlayers().add(entry.getUuid());
-            } else if (packet.getAction() == PlayerListPacketType.REMOVE) {
-                this.player.getPlayers().remove(entry.getUuid());
+        List<PlayerListEntry> entries = packet.getEntries();
+        for (PlayerListEntry entry : entries) {
+            if (entry instanceof PlayerListAddEntry addEntry) {
+                this.player.getPlayers().add(addEntry.getUuid());
+            } else if (entry instanceof PlayerListRemoveEntry removeEntry) {
+                this.player.getPlayers().remove(removeEntry.getUuid());
             }
         }
         return PacketSignal.UNHANDLED;
@@ -174,17 +176,25 @@ public class EntityTracker implements BedrockPacketHandler {
 
     @Override
     public final PacketSignal handle(SetScorePacket packet) {
-        switch(packet.getScorePacketType()) {
-            case SET:
-                for(ScoreInfo info : packet.getScoreInfo()) {
-                    this.player.getScoreInfos().put(info.getScoreboardId(), info);
+        for (ScoreInfo scoreInfo : packet.getScoreInfo()) {
+            switch (scoreInfo.getAction()) {
+                case CHANGE_PLAYER -> {
+                    final ChangePlayerScore score = (ChangePlayerScore) scoreInfo;
+                    this.player.getScoreInfos().put(score.getScoreboardId(), score);
                 }
-                break;
-            case REMOVE:
-                for(ScoreInfo info : packet.getScoreInfo()) {
-                    this.player.getScoreInfos().remove(info.getScoreboardId());
+                case CHANGE_ENTITY -> {
+                    final ChangeEntityScore score = (ChangeEntityScore) scoreInfo;
+                    this.player.getScoreInfos().put(score.getScoreboardId(), score);
                 }
-                break;
+                case CHANGE_FAKE_PLAYER -> {
+                    final ChangeFakePlayerScore score = (ChangeFakePlayerScore) scoreInfo;
+                    this.player.getScoreInfos().put(score.getScoreboardId(), score);
+                }
+                case REMOVE -> {
+                    final RemoveScore score = (RemoveScore) scoreInfo;
+                    this.player.getScoreInfos().remove(score.getScoreboardId());
+                }
+            }
         }
         return PacketSignal.UNHANDLED;
     }

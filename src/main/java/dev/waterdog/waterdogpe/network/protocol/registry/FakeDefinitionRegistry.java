@@ -41,6 +41,11 @@ public class FakeDefinitionRegistry<D extends Definition> implements DefinitionR
     }
 
     @Override
+    public int getRuntimeIdByName(String name) {
+        return -1;
+    }
+
+    @Override
     public boolean isRegistered(D definition) {
         return this.runtimeMap.get(definition.getRuntimeId()) == definition;
     }

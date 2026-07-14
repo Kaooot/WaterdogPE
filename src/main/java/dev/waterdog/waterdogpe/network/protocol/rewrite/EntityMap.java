@@ -19,12 +19,13 @@ import dev.waterdog.waterdogpe.network.protocol.rewrite.types.RewriteData;
 import dev.waterdog.waterdogpe.network.protocol.user.PlayerRewriteUtils;
 import dev.waterdog.waterdogpe.player.ProxiedPlayer;
 import it.unimi.dsi.fastutil.longs.LongListIterator;
-import org.cloudburstmc.protocol.bedrock.data.PlayerListPacketType;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorDataMap;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorDataType;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorDataTypes;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorLink;
 import org.cloudburstmc.protocol.bedrock.data.camera.CameraAttachToEntityInstruction;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListAddEntry;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListEntry;
 import org.cloudburstmc.protocol.bedrock.data.payload.shape.ShapeDataPayload;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
@@ -112,7 +113,7 @@ public class EntityMap implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(MoveActorDeltaPacket packet) {
-        return data.rewriteEntityId(packet.getData().getActorRuntimeID(), value -> packet.getData().setActorRuntimeID(value));
+        return data.rewriteEntityId(packet.getMoveData().getActorRuntimeID(), value -> packet.getMoveData().setActorRuntimeID(value));
     }
 
     @Override
@@ -243,17 +244,14 @@ public class EntityMap implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(PlayerListPacket packet) {
-        if (packet.getAction() != PlayerListPacketType.ADD) {
-            return PacketSignal.UNHANDLED;
-        }
-
         PacketSignal signal = PacketSignal.UNHANDLED;
-
-        for (PlayerListPacket.Entry entry : packet.getEntries()) {
-            long rewriteId = PlayerRewriteUtils.rewriteId(entry.getTargetActorID(), this.data.getEntityId(), this.data.getOriginalEntityId());
-            if (rewriteId != entry.getTargetActorID()) {
-                signal = PacketSignal.HANDLED;
-                entry.setTargetActorID(rewriteId);
+        for (PlayerListEntry listEntry : packet.getEntries()) {
+            if (listEntry instanceof PlayerListAddEntry entry) {
+                long rewriteId = PlayerRewriteUtils.rewriteId(entry.getActorUniqueID(), this.data.getEntityId(), this.data.getOriginalEntityId());
+                if (rewriteId != entry.getActorUniqueID()) {
+                    signal = PacketSignal.HANDLED;
+                    entry.setActorUniqueID(rewriteId);
+                }
             }
         }
         return signal;

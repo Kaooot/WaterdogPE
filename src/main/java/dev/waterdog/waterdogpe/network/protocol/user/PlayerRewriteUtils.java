@@ -33,7 +33,14 @@ import org.cloudburstmc.protocol.bedrock.data.actor.ActorFlags;
 import org.cloudburstmc.protocol.bedrock.data.actor.ActorLink;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerType;
 import org.cloudburstmc.protocol.bedrock.data.payload.boss.BossEventUpdateType;
+import org.cloudburstmc.protocol.bedrock.data.payload.chunk.HeightMapDataType;
+import org.cloudburstmc.protocol.bedrock.data.payload.chunk.SubChunkHeightmapData;
+import org.cloudburstmc.protocol.bedrock.data.payload.chunk.SubChunkPacketData;
+import org.cloudburstmc.protocol.bedrock.data.payload.chunk.SubChunkRequestResult;
 import org.cloudburstmc.protocol.bedrock.data.payload.common.DimensionType;
+import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListRemoveEntry;
+import org.cloudburstmc.protocol.bedrock.data.payload.move.PositionMode;
+import org.cloudburstmc.protocol.bedrock.data.payload.scoreboard.ScoreInfo;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.VarInts;
@@ -256,10 +263,11 @@ public class PlayerRewriteUtils {
             return;
         }
         PlayerListPacket packet = new PlayerListPacket();
-        packet.setAction(PlayerListPacketType.REMOVE);
-        List<PlayerListPacket.Entry> entries = new ArrayList<>();
+        List<PlayerListRemoveEntry> entries = new ArrayList<>();
         for (UUID uuid : playerList) {
-            entries.add(new PlayerListPacket.Entry(uuid));
+            final PlayerListRemoveEntry entry = new PlayerListRemoveEntry();
+            entry.setUuid(uuid);
+            entries.add(entry);
         }
         packet.getEntries().addAll(entries);
         session.sendPacket(packet);
@@ -304,7 +312,6 @@ public class PlayerRewriteUtils {
             return;
         }
         SetScorePacket packet = new SetScorePacket();
-        packet.setScorePacketType(ScorePacketType.REMOVE);
         packet.getScoreInfo().addAll(scoreInfos.values());
         session.sendPacket(packet);
     }
@@ -327,12 +334,12 @@ public class PlayerRewriteUtils {
         packet.setPosition(position);
         packet.setPlayerRuntimeID(runtimeId);
         packet.setRotation(rotation.toVector3(rotation.getY()));
-        packet.setPositionMode(MovePlayerPacket.PositionMode.RESPAWN);
+        packet.setPositionMode(PositionMode.RESPAWN);
         session.sendPacketImmediately(packet);
     }
 
     public static void injectDimensionChange(ProxiedConnection session, int dimensionId, Vector3f position, long runtimeId, ProtocolVersion version, boolean chunks, boolean requestSubChunks) {
-        if (session == null || !session.isConnected()){
+        if (session == null || !session.isConnected()) {
             return;
         }
         ChangeDimensionPacket packet = new ChangeDimensionPacket();
@@ -407,7 +414,7 @@ public class PlayerRewriteUtils {
     }
 
     public static void injectChunkCacheBlobs(ProxiedConnection session, LongSet blobs) {
-        if (session == null || !session.isConnected()){
+        if (session == null || !session.isConnected()) {
             return;
         }
 
@@ -438,19 +445,24 @@ public class PlayerRewriteUtils {
             offsets = List.of(Vector3i.ZERO); // pre-v485 clients request a single sub-chunk with no offsets
         }
         for (Vector3i offset : offsets) {
-            SubChunkData data = new SubChunkData();
-            data.setPosition(offset);
+            SubChunkPacketData data = new SubChunkPacketData();
+            data.setSubChunkPosOffset(offset);
             data.setSubChunkRequestResult(SubChunkRequestResult.SUCCESS_ALL_AIR);
-            data.setData(Unpooled.EMPTY_BUFFER);
-            data.setHeightMapDataType(HeightMapDataType.NO_DATA);
-            data.setRenderHeightMapDataType(HeightMapDataType.NO_DATA); // serialized since v818
-            packet.getSubChunkDataList().add(data);
+            data.setSerializedSubChunk(Unpooled.EMPTY_BUFFER);
+
+            final SubChunkHeightmapData heightMapData = new SubChunkHeightmapData();
+            heightMapData.setHeightMapType(HeightMapDataType.NO_DATA);
+            heightMapData.setRenderHeightMapType(HeightMapDataType.NO_DATA);
+
+            data.setHeightMapData(heightMapData);
+
+            packet.getSubChunkData().add(data);
         }
         session.sendPacketImmediately(packet);
     }
 
     public static void injectEntityImmobile(ProxiedConnection session, long runtimeId, boolean immobile) {
-        if (session == null || !session.isConnected()){
+        if (session == null || !session.isConnected()) {
             return;
         }
 
@@ -464,7 +476,7 @@ public class PlayerRewriteUtils {
     }
 
     public static void injectForceCloseInventory(ProxiedConnection session, long runtimeId) {
-        if (session == null || !session.isConnected()){
+        if (session == null || !session.isConnected()) {
             return;
         }
         // The client closes every open inventory, including its own window which ContainerClosePacket can not close,
