@@ -45,7 +45,7 @@ import java.util.*;
 
 public class PackManager {
 
-    private static final long CHUNK_SIZE = 1024 * 256;
+    private static final long CHUNK_SIZE = 8192;
 
     private static final PathMatcher ZIP_PACK_MATCHER = FileSystems.getDefault().getPathMatcher("glob:**.{zip,mcpack}");
     private static final PackInstanceId EDU_PACK = new PackInstanceId("0fba4063-dba1-4281-9b89-ff9390653530", "1.0.0", "");
