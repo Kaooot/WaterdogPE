@@ -41,6 +41,7 @@ import org.cloudburstmc.protocol.bedrock.data.payload.common.DimensionType;
 import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListRemoveEntry;
 import org.cloudburstmc.protocol.bedrock.data.payload.move.PositionMode;
 import org.cloudburstmc.protocol.bedrock.data.payload.scoreboard.ScoreInfo;
+import org.cloudburstmc.protocol.bedrock.data.payload.shape.*;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.util.VarInts;
@@ -484,6 +485,46 @@ public class PlayerRewriteUtils {
         SetActorDataPacket packet = new SetActorDataPacket();
         packet.setTargetRuntimeID(runtimeId);
         packet.getActorData().setFlag(ActorFlags.SLEEPING, true);
+        session.sendPacketImmediately(packet);
+    }
+
+    public static void injectClearDebugShapes(ProxiedConnection session, Long2ObjectMap<ShapeDataPayload> debugShapes) {
+        final PrimitiveShapesPacket packet = new PrimitiveShapesPacket();
+        final List<ShapeDataPayload> shapes = new ObjectArrayList<>();
+
+        for (Long2ObjectMap.Entry<ShapeDataPayload> entry : debugShapes.long2ObjectEntrySet()) {
+            final ShapeDataPayload payload = entry.getValue();
+            payload.setNetworkId(entry.getLongKey());
+            payload.setScale(0f);
+
+            if (payload.getExtraShapeData() != null) {
+                switch (payload.getExtraShapeData().getType()) {
+                    case LINE -> {
+                        final LineDataPayload lineDataPayload = new LineDataPayload();
+                        lineDataPayload.setLineEndLocation(payload.getLocation());
+
+                        payload.setExtraShapeData(lineDataPayload);
+                    }
+                    case ARROW -> {
+                        final ArrowDataPayload arrowDataPayload = new ArrowDataPayload();
+                        arrowDataPayload.setArrowEndLocation(payload.getLocation());
+
+                        payload.setExtraShapeData(arrowDataPayload);
+                    }
+                    case TEXT -> {
+                        final TextDataPayload textDataPayload = new TextDataPayload();
+                        textDataPayload.setText("");
+
+                        payload.setExtraShapeData(textDataPayload);
+                    }
+                }
+            }
+
+            shapes.add(payload);
+        }
+
+        packet.getShapes().addAll(shapes);
+
         session.sendPacketImmediately(packet);
     }
 

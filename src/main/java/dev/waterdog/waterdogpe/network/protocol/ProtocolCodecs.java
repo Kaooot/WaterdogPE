@@ -129,6 +129,7 @@ public class ProtocolCodecs {
         HANDLED_PACKETS.add(SetTimePacket.class);
         HANDLED_PACKETS.add(SubChunkRequestPacket.class);
         HANDLED_PACKETS.add(SubChunkPacket.class);
+        HANDLED_PACKETS.add(PrimitiveShapesPacket.class);
     }
 
     private static final List<ProtocolCodecUpdater> UPDATERS = new ObjectArrayList<>();
