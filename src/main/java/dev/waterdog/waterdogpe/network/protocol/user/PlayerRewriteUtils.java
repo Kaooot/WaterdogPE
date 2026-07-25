@@ -488,12 +488,12 @@ public class PlayerRewriteUtils {
         session.sendPacketImmediately(packet);
     }
 
-    public static void injectClearDebugShapes(ProxiedConnection session, Long2ObjectMap<ShapeDataPayload> debugShapes) {
+    public static void injectClearDebugShapes(ProxiedConnection session, Long2ObjectMap<PrimitiveShapeDataPayload> debugShapes) {
         final PrimitiveShapesPacket packet = new PrimitiveShapesPacket();
-        final List<ShapeDataPayload> shapes = new ObjectArrayList<>();
+        final List<PrimitiveShapeDataPayload> shapes = new ObjectArrayList<>();
 
-        for (Long2ObjectMap.Entry<ShapeDataPayload> entry : debugShapes.long2ObjectEntrySet()) {
-            final ShapeDataPayload payload = entry.getValue();
+        for (Long2ObjectMap.Entry<PrimitiveShapeDataPayload> entry : debugShapes.long2ObjectEntrySet()) {
+            final PrimitiveShapeDataPayload payload = entry.getValue();
             payload.setNetworkId(entry.getLongKey());
             payload.setScale(0f);
 

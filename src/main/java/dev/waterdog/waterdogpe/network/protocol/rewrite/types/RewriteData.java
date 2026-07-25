@@ -27,7 +27,7 @@ import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodecHelper;
 import org.cloudburstmc.protocol.bedrock.data.GameRuleData;
 import org.cloudburstmc.protocol.bedrock.data.ServerBlockProperty;
-import org.cloudburstmc.protocol.bedrock.data.payload.shape.ShapeDataPayload;
+import org.cloudburstmc.protocol.bedrock.data.payload.shape.PrimitiveShapeDataPayload;
 import org.cloudburstmc.protocol.common.PacketSignal;
 
 import java.util.List;
@@ -93,7 +93,7 @@ public class RewriteData {
     private BedrockCodecHelper codecHelper;
 
     @Getter
-    private final Long2ObjectMap<ShapeDataPayload> debugShapes = new Long2ObjectOpenHashMap<>();
+    private final Long2ObjectMap<PrimitiveShapeDataPayload> debugShapes = new Long2ObjectOpenHashMap<>();
 
     public RewriteData() {
         this.proxyName = ProxyServer.getInstance().getConfiguration().getName();

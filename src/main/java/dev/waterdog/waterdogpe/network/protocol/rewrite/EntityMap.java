@@ -26,7 +26,7 @@ import org.cloudburstmc.protocol.bedrock.data.actor.ActorLink;
 import org.cloudburstmc.protocol.bedrock.data.camera.CameraAttachToEntityInstruction;
 import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListAddEntry;
 import org.cloudburstmc.protocol.bedrock.data.payload.list.PlayerListEntry;
-import org.cloudburstmc.protocol.bedrock.data.payload.shape.ShapeDataPayload;
+import org.cloudburstmc.protocol.bedrock.data.payload.shape.PrimitiveShapeDataPayload;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.cloudburstmc.protocol.common.PacketSignal;
 
@@ -367,7 +367,7 @@ public class EntityMap implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(PrimitiveShapesPacket packet) {
         PacketSignal signal = PacketSignal.UNHANDLED;
-        for (ShapeDataPayload shape : packet.getShapes()) {
+        for (PrimitiveShapeDataPayload shape : packet.getShapes()) {
             if (shape.getShapeType() != null) {
                 data.getDebugShapes().put(shape.getNetworkId(), shape);
             }
